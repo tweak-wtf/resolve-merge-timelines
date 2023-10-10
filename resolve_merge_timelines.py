@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+# fmt: off
 # Author: Jiri Sindelar
 
 # Thanks to Zhang Laichi for numerous code pieces
