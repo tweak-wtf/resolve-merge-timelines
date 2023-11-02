@@ -233,6 +233,28 @@ class UI:
         self.main_window.On["merge_button"].Clicked = self.merge
         self.main_window.On["include_only"].TextChanged = self.update
 
+    @property
+    # ? should we really call the filter include_only
+    def filter(self) -> str:
+        return str(self.main_window.Find("include_only").Text)
+
+    @property
+    def timeline_in(self) -> str:
+        return str(self.main_window.Find("timelines").CurrentText)
+
+    @property
+    #! might require getter
+    def timeline_out(self) -> str:
+        return str(self.main_window.Find("merged_tl_name").Text)
+
+    @property
+    def merge_gap(self) -> int:
+        return int(self.main_window.Find("clip_colors").CurrentText)
+
+    @property
+    def merge_mode(self) -> str:
+        return str(self.main_window.Find("merge_key").CurrentText)
+
     def start(self):
         self.main_window.Show()
         self.ui_dispatcher.RunLoop()
