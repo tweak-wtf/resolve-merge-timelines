@@ -227,11 +227,9 @@ class UI:
         items = self.main_window.GetItems()
         items["clip_colors"].AddItems(clipcolor_names)
         items["merge_key"].AddItems(merge_names)
-        pass
 
     def init_ui_callbacks(self):
         self.main_window.On["ui.main"].Close = self.destroy
-        # self.main_window.On["Run"].Clicked = self.run
         self.main_window.On["merge_button"].Clicked = self.merge
         self.main_window.On["include_only"].TextChanged = self.update
 
@@ -245,14 +243,13 @@ class UI:
         if event:
             print(event)
 
-    def run(self):
-        pass
+    def merge(self, event=None):
+        if event:
+            print(event)
 
-    def merge(self):
-        pass
-
-    def update(self):
-        pass
+    def update(self, event=None):
+        if event:
+            print(event)
 
 
 app = UI(bmd.scriptapp("Fusion"))
