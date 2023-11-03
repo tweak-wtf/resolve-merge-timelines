@@ -19,15 +19,80 @@ clipcolor_names = [
 merge_names = ["Reel Name", "Source File"]
 
 
+class ResolveProject:
+    def __init__(self) -> None:
+        pass
+
+
 class Merger:
     def __init__(self, fu) -> None:
         self.fu = fu
+        self.__mode: str
+        self.__gapsize: int
+        self.__timeline_in: str
+        self.__timeline_out: str
+        self.__color_to_skip: str
+        self.__timeline_filter: str
+
+    @property
+    def timeline_in(self):
+        return self.__timeline_in
+
+    @timeline_in.setter
+    def timeline_in(self, var):
+        self.__timeline_in = var
+
+    @property
+    def timeline_out(self):
+        return self.__timeline_out
+
+    @timeline_out.setter
+    def timeline_out(self, var):
+        self.__timeline_out = var
+
+    @property
+    def timeline_filter(self):
+        return self.__timeline_filter
+
+    @timeline_filter.setter
+    def timeline_filter(self, var):
+        self.__timeline_filter = var
+
+    @property
+    def mode(self):
+        return self.__mode
+
+    @mode.setter
+    def mode(self, var):
+        self.__mode = var
+
+    @property
+    def gapsize(self):
+        return self.__gapsize
+
+    @gapsize.setter
+    def gapsize(self, var):
+        self.__gapsize = var
+
+    @property
+    def color_to_skip(self):
+        return self.__color_to_skip
+
+    @color_to_skip.setter
+    def color_to_skip(self, var):
+        self.__color_to_skip = var
+
+    def merge(self):
+        try:
+            print(self.mode)
+        except Exception as err:
+            print(err)
 
 
 class UI:
     def __init__(self, fu) -> None:
         self.fu = fu
-        self.renamer = Merger(fu)
+        self.merger = Merger(fu)
         self.ui_manager = self.fu.UIManager
         self.ui_dispatcher = bmd.UIDispatcher(self.ui_manager)
 
@@ -235,8 +300,13 @@ class UI:
 
     @property
     # ? should we really call the filter include_only
+    # ? should we combine timeline and color filter into 1 object
     def filter(self) -> str:
         return str(self.main_window.Find("include_only").Text)
+
+    @property
+    def color_to_skip(self) -> str:
+        return str(self.main_window.Find("clip_colors").CurrentText)
 
     @property
     def timeline_in(self) -> str:
@@ -249,7 +319,7 @@ class UI:
 
     @property
     def merge_gap(self) -> int:
-        return int(self.main_window.Find("clip_colors").CurrentText)
+        return int(self.main_window.Find("merge_gap").Value)
 
     @property
     def merge_mode(self) -> str:
@@ -268,6 +338,17 @@ class UI:
     def merge(self, event=None):
         if event:
             print(event)
+
+        # prepare timeline merger
+        self.merger.timeline_in = self.timeline_in
+        self.merger.timeline_out = self.timeline_out
+        self.merger.timeline_filter = self.filter
+        self.merger.color_to_skip = self.color_to_skip
+        self.merger.mode = self.merge_mode
+        self.merger.gapsize = self.merge_gap
+
+        # do the merge
+        self.merger.merge()
 
     def update(self, event=None):
         if event:
