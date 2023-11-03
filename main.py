@@ -1,3 +1,5 @@
+import sys
+
 clipcolor_names = [
     "Orange",
     "Apricot",
@@ -19,9 +21,80 @@ clipcolor_names = [
 merge_names = ["Reel Name", "Source File"]
 
 
-class ResolveProject:
+class Timeline:
+    def __init__(self, resolve_obj) -> None:
+        self.__resolve_obj = resolve_obj
+
+    @property
+    def cut_in(self):
+        return self.__resolve_obj.GetLeftOffset()
+
+    @property
+    def cut_out(self):
+        return self.__resolve_obj.GetDuration() - self.cut_in
+
+
+class RPManager:
     def __init__(self) -> None:
-        pass
+        self.__manager = bmd.scriptapp("Resolve").GetProjectManager()
+        self.__current_project = self.manager.GetCurrentProject()
+        self.__mediapool = self.current_project.GetMediaPool()
+        self.__timelines: list
+        print(self.manager)
+
+    @property
+    def manager(self):
+        return self.__manager
+
+    @property
+    def all_timelines(self):
+        result = [Timeline(i) for i in self.manager.GetAllTimelines()]
+        return self.__manager
+
+    @property
+    def fps_map(self):
+        return {
+            "16": 16.0,
+            "18": 18.0,
+            "23": 23.976,
+            "24": 24.0,
+            "24.0": 24.0,
+            "25": 25.0,
+            "29": 29.97,
+            "30": 30.0,
+            "30.0": 30.0,
+            "47": 47.952,
+            "48": 48.0,
+            "50": 50.0,
+            "59": 59.94,
+            "60": 60.0,
+            "72": 72.0,
+            "95": 95.904,
+            "96": 96.0,
+            "100": 100.0,
+            "119": 119.88,
+            "120": 120.0,
+        }
+
+    @property
+    def current_project(self):
+        return self.__current_project
+
+    @property
+    def current_project_name(self):
+        return self.__current_project.GetName()
+
+    @property
+    def timelines(self):
+        return self.__timelines
+
+    @timelines.setter
+    def timelines(self):
+        return self.__timelines
+
+    @property
+    def mediapool(self):
+        return self.__mediapool
 
 
 class Merger:
@@ -83,6 +156,42 @@ class Merger:
         self.__color_to_skip = var
 
     def merge(self):
+        rpmanager = RPManager()
+        # query all timelines that match the given filters
+        all_timelines = rpmanager.get_all_timelines(filter=True)
+
+        # build dict with source mediapool item: clip item
+        # ! make sure clip_map has no duplicate keys
+        clip_map = {}
+        for tl in all_timelines:
+            for tl_clip in tl.GetClips():
+                src_clip = tl_clip.GetSource()  # maybe .GetMediaPoolItem()
+                if not clip_map.get(src_clip):
+                    clip_map.update({src_clip: [tl_clip]})
+                else:
+                    clip_map[src_clip].append(tl_clip)
+
+        # ? do i need to sort the tl_clips by cut in
+
+        # apply algo... get lower cut in and highest cut out
+        #               keep gap_size in mind
+        result = {}  # src_clip: (cut_in, cut_out)
+        for src_clip, tl_clips in clip_map.items():
+            result[src_clip] = None
+            _in, _out, curr_gap = sys.maxsize, 0, None
+            for c in tl_clips:
+                if c.cut_in < _in:
+                    _in = c.cut_in
+                else:
+                    curr_gap = c.cut_in - _out
+                    if curr_gap > self.gapsize:
+                        pass  # ! split clip, effectively getting a new one
+                if c.cut_out > _out:
+                    _out = c.cut_out
+            result[src_clip] = (_in, _out)
+
+        # create new timeline
+        # append all clips in their best length to timeline
         try:
             print(self.mode)
         except Exception as err:
