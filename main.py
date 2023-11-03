@@ -1,4 +1,6 @@
 import sys
+import logging
+from pathlib import Path
 
 clipcolor_names = [
     "Orange",
@@ -21,34 +23,15 @@ clipcolor_names = [
 merge_names = ["Reel Name", "Source File"]
 
 
-class Timeline:
-    def __init__(self, resolve_obj) -> None:
-        self.__resolve_obj = resolve_obj
-
-    @property
-    def cut_in(self):
-        return self.__resolve_obj.GetLeftOffset()
-
-    @property
-    def cut_out(self):
-        return self.__resolve_obj.GetDuration() - self.cut_in
-
-
-class RPManager:
+class DVR_ProjectManager:
     def __init__(self) -> None:
         self.__manager = bmd.scriptapp("Resolve").GetProjectManager()
         self.__current_project = self.manager.GetCurrentProject()
         self.__mediapool = self.current_project.GetMediaPool()
-        self.__timelines: list
-        print(self.manager)
+        log.debug(self.manager)
 
     @property
     def manager(self):
-        return self.__manager
-
-    @property
-    def all_timelines(self):
-        result = [Timeline(i) for i in self.manager.GetAllTimelines()]
         return self.__manager
 
     @property
@@ -85,16 +68,137 @@ class RPManager:
         return self.__current_project.GetName()
 
     @property
-    def timelines(self):
-        return self.__timelines
-
-    @timelines.setter
-    def timelines(self):
-        return self.__timelines
-
-    @property
     def mediapool(self):
         return self.__mediapool
+
+    @property
+    def all_timelines(self):
+        # ! resolve saves Timelines with 1-based indices
+        result = []
+        for i in range(1, self.current_project.GetTimelineCount() + 1):
+            dvrtl = self.current_project.GetTimelineByIndex(i)
+            result.append(DVR_Timeline(dvrtl))
+
+        return result
+
+
+class DVR_Timeline:
+    def __init__(self, dvr_obj) -> None:
+        self.__dvr_obj = dvr_obj
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def start_frame(self) -> int:
+        return int(self.__dvr_obj.GetStartFrame())
+
+    @property
+    def end_frame(self) -> int:
+        return int(self.__dvr_obj.GetEndFrame())
+
+    @property
+    def name(self):
+        return str(self.__dvr_obj.GetName())
+
+    @property
+    def framerate(self) -> float:
+        return float(self.__dvr_obj.GetSetting("timelineFrameRate"))
+
+    @property
+    def is_drop_frame(self):
+        result = self.__dvr_obj.GetSetting("timelineDropFrameTimecode")
+        log.debug(result)
+        return bool(result)
+
+    @property
+    def video_tracks(self):
+        result = []
+        for i in range(1, self.__dvr_obj.GetTrackCount("video")):
+            result.append(self.__dvr_obj.GetTrackName("video", i))
+        return result
+
+    @property
+    def markers(self):
+        return self.__dvr_obj.GetMarkers()
+
+    @property
+    def clips(self):
+        result = []
+        # TODO: exclude video_tracks as filter
+        log.debug(f"{self.video_tracks = }")
+        for vt in self.video_tracks:
+            log.debug(f"{vt = }")
+            log.debug(f"{self.__dvr_obj = }")
+            log.debug(f"{self.__dvr_obj.GetItemListInTrack = }")
+            for c in self.__dvr_obj.GetItemListInTrack("video", 1):
+                log.debug(f"{c = }")
+                clip = DVR_Clip(c)
+                clip.used_in_timeline = self
+                result.append(clip)
+        return result
+
+
+class DVR_MediaPoolItem:
+    def __init__(self) -> None:
+        pass
+
+    @property
+    def occurrences(self):
+        result = []
+        for tl in timelines:
+            if self in timeline:
+                result.append(self)
+        return result
+
+
+class DVR_Clip:
+    def __init__(self, dvr_obj) -> None:
+        self.__dvr_obj = dvr_obj
+        self.__used_timeline: DVR_Timeline
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def name(self):
+        return self.__dvr_obj.GetName()
+
+    @property
+    def source(self):
+        return self.__dvr_obj.GetMediaPoolItem()
+
+    @property
+    def used_in_timeline(self) -> DVR_Timeline:
+        return self.__used_timeline
+
+    @used_in_timeline.setter
+    def used_in_timeline(self, val):
+        self.__used_timeline = val
+
+    @property
+    def edit_in(self):
+        return self.__dvr_obj.GetStart()
+
+    @property
+    def edit_out(self):
+        return self.__dvr_obj.GetEnd()
+
+    @property
+    def head_in(self):
+        return self.__dvr_obj.GetLeftOffset()
+
+    @property
+    def tail_out(self):
+        return self.__dvr_obj.GetRightOffset()
+
+    @property
+    def duration(self):
+        return self.__dvr_obj.GetDuration()
+
+    @property
+    def color(self):
+        return self.__dvr_obj.GetClipColor()
 
 
 class Merger:
@@ -156,20 +260,31 @@ class Merger:
         self.__color_to_skip = var
 
     def merge(self):
-        rpmanager = RPManager()
-        # query all timelines that match the given filters
-        all_timelines = rpmanager.get_all_timelines(filter=True)
+        pmanager = DVR_ProjectManager()
 
+        # query all timelines that match the given filters
+        # TODO: implement regex include and exclude
+        all_timelines = [
+            tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
+        ]
+
+        [log.debug(t) for t in all_timelines]
         # build dict with source mediapool item: clip item
         # ! make sure clip_map has no duplicate keys
         clip_map = {}
-        for tl in all_timelines:
-            for tl_clip in tl.GetClips():
-                src_clip = tl_clip.GetSource()  # maybe .GetMediaPoolItem()
-                if not clip_map.get(src_clip):
-                    clip_map.update({src_clip: [tl_clip]})
-                else:
-                    clip_map[src_clip].append(tl_clip)
+        try:
+            for tl in all_timelines:
+                for tl_clip in tl.clips:
+                    log.debug(f"{tl_clip = }")
+                    src_clip = tl_clip.source  # maybe .GetMediaPoolItem()
+                    if not clip_map.get(src_clip):
+                        clip_map.update({src_clip: [tl_clip]})
+                    else:
+                        clip_map[src_clip].append(tl_clip)
+        except Exception as err:
+            log.exception(err, stack_info=True)
+        [log.debug(k, v) for k, v in clip_map]
+        return
 
         # ? do i need to sort the tl_clips by cut in
 
@@ -193,9 +308,9 @@ class Merger:
         # create new timeline
         # append all clips in their best length to timeline
         try:
-            print(self.mode)
+            log.debug(self.mode)
         except Exception as err:
-            print(err)
+            log.debug(err)
 
 
 class UI:
@@ -442,11 +557,11 @@ class UI:
     def destroy(self, event=None):
         self.ui_dispatcher.ExitLoop()
         if event:
-            print(event)
+            log.debug(event)
 
     def merge(self, event=None):
         if event:
-            print(event)
+            log.debug(event)
 
         # prepare timeline merger
         self.merger.timeline_in = self.timeline_in
@@ -461,8 +576,46 @@ class UI:
 
     def update(self, event=None):
         if event:
-            print(event)
+            log.debug(event)
 
+
+# logging.basicConfig(
+#     format="%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
+#     datefmt="%Y-%m-%d:%H:%M:%S",
+#     level=logging.DEBUG,
+# )
+
+log = logging.getLogger(__name__)
+formatter = logging.Formatter(
+    "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
+)
+errhandler = logging.StreamHandler(sys.stderr)
+errhandler.setLevel(logging.ERROR)
+errhandler.setFormatter(formatter)
+log.addHandler(errhandler)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(formatter)
+log.addHandler(handler)
+
+filehandler = logging.FileHandler(
+    str(
+        Path(
+            r"C:\Users\tony.dorfmeister\AppData\Roaming\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Comp\resolve-merge-timelines\log.log"
+        )
+    )
+)
+filehandler.setLevel(logging.DEBUG)
+filehandler.setFormatter(formatter)
+log.addHandler(filehandler)
+
+log.setLevel(logging.DEBUG)
+
+log.debug("DEBUG")
+log.info("INFO")
+log.critical("CRIT")
+log.error("ERR")
 
 app = UI(bmd.scriptapp("Fusion"))
 app.start()
