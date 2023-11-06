@@ -225,7 +225,9 @@ class DVR_SourceClip:
 
     @property
     def properties(self):
-        return self.__dvr_obj.GetMetadata()
+        result = self.__dvr_obj.GetMetadata()
+        result.update(self.__dvr_obj.GetClipProperty())
+        return dict(sorted(result.items()))
 
 
 class DVR_Clip:
@@ -264,11 +266,11 @@ class DVR_Clip:
 
     @property
     def head_in(self) -> int:
-        return self.smpte.get_frames(str(self.properties.get("Start TC")))
+        return self.smpte.get_frames(str(self.source.properties.get("Start TC")))
 
     @property
     def tail_out(self) -> int:
-        return self.smpte.get_frames(str(self.properties.get("End TC")))
+        return self.smpte.get_frames(str(self.source.properties.get("End TC")))
 
     @property
     def left_offset(self) -> int:
@@ -286,6 +288,7 @@ class DVR_Clip:
     def src_out(self) -> int:
         log.debug(f"{self.duration = }")
         log.debug(f"{self.src_in = }")
+        # ? why doesn't this here work: self.tail_out - self.right_offset
         return self.src_in + self.duration
 
     @property
@@ -298,9 +301,7 @@ class DVR_Clip:
 
     @property
     def properties(self):
-        result = self.__dvr_obj.GetProperty()
-        result.update(self.source.clip_properties)
-        return dict(sorted(result.items()))
+        return dict(self.__dvr_obj.GetProperty())
 
 
 class DVR_Timeline:
@@ -757,16 +758,19 @@ class UI:
         if event:
             log.debug(event)
 
-        # prepare timeline merger
-        self.merger.timeline_in = self.timeline_in
-        self.merger.timeline_out = self.timeline_out
-        self.merger.timeline_filter = self.filter
-        self.merger.color_to_skip = self.color_to_skip
-        self.merger.mode = self.merge_mode
-        self.merger.gapsize = self.merge_gap
+        try:
+            # prepare timeline merger
+            self.merger.timeline_in = self.timeline_in
+            self.merger.timeline_out = self.timeline_out
+            self.merger.timeline_filter = self.filter
+            self.merger.color_to_skip = self.color_to_skip
+            self.merger.mode = self.merge_mode
+            self.merger.gapsize = self.merge_gap
 
-        # do the merge
-        self.merger.merge()
+            # do the merge
+            self.merger.merge()
+        except Exception as err:
+            log.exception(err, stack_info=True)
 
     def update(self, event=None):
         if event:
