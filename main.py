@@ -23,12 +23,138 @@ clipcolor_names = [
 merge_names = ["Reel Name", "Source File"]
 
 
+class SMPTE(object):
+    """Frames to SMPTE timecode converter and reverse."""
+
+    # ! everything in here should be classmethods,vars since we don't need to instantiate an object ever
+
+    def __init__(self):
+        self.__fps = 24.0
+        self.__is_dropframe = False
+
+    @property
+    def fps(self) -> float:
+        return self.__fps
+
+    @fps.setter
+    def fps(self, val):
+        val = float(val)
+        self.__fps = val
+
+    @property
+    def is_dropframe(self) -> float:
+        return self.__is_dropframe
+
+    @is_dropframe.setter
+    def is_dropframe(self, val):
+        val = float(val)
+        self.__is_dropframe = val
+
+    def get_frames(self, tc: str) -> int:
+        """Converts SMPTE timecode to frame count."""
+
+        if not tc or tc == "":
+            return None
+
+        if int(tc[9:]) > self.fps:
+            raise ValueError("SMPTE timecode to frame rate mismatch.", tc, self.fps)
+
+        hours = int(tc[:2])
+        minutes = int(tc[3:5])
+        seconds = int(tc[6:8])
+        frames = int(tc[9:])
+
+        totalMinutes = int(60 * hours + minutes)
+
+        # Drop frame calculation using the Duncan/Heidelberger method.
+        if self.is_dropframe:
+            dropFrames = int(round(self.fps * 0.066666))
+            timeBase = int(round(self.fps))
+            hourFrames = int(timeBase * 60 * 60)
+            minuteFrames = int(timeBase * 60)
+            frm = int(
+                (
+                    (hourFrames * hours)
+                    + (minuteFrames * minutes)
+                    + (timeBase * seconds)
+                    + frames
+                )
+                - (dropFrames * (totalMinutes - (totalMinutes // 10)))
+            )
+        # Non drop frame calculation.
+        else:
+            self.fps = int(round(self.fps))
+            frm = int((totalMinutes * 60 + seconds) * self.fps + frames)
+
+        return frm
+
+    def get_tc(self, frames: int) -> str:
+        """Converts frame count to SMPTE timecode."""
+
+        frames = abs(frames)
+
+        # Drop frame calculation using the Duncan/Heidelberger method.
+        if self.is_dropframe:
+            spacer = ":"
+            spacer2 = ";"
+
+            dropFrames = int(round(self.fps * 0.066666))
+            framesPerHour = int(round(self.fps * 3600))
+            framesPer24Hours = framesPerHour * 24
+            framesPer10Minutes = int(round(self.fps * 600))
+            framesPerMinute = int(round(self.fps) * 60 - dropFrames)
+
+            frames = frames % framesPer24Hours
+
+            d = frames // framesPer10Minutes
+            m = frames % framesPer10Minutes
+
+            if m > dropFrames:
+                frames = (
+                    frames
+                    + (dropFrames * 9 * d)
+                    + dropFrames * ((m - dropFrames) // framesPerMinute)
+                )
+            else:
+                frames = frames + dropFrames * 9 * d
+
+            frRound = int(round(self.fps))
+            hr = int(frames // frRound // 60 // 60)
+            mn = int((frames // frRound // 60) % 60)
+            sc = int((frames // frRound) % 60)
+            fr = int(frames % frRound)
+
+        # Non drop frame calculation.
+        else:
+            self.fps = int(round(self.fps))
+            spacer = ":"
+            spacer2 = spacer
+
+            frHour = self.fps * 3600
+            frMin = self.fps * 60
+
+            hr = int(frames // frHour)
+            mn = int((frames - hr * frHour) // frMin)
+            sc = int((frames - hr * frHour - mn * frMin) // self.fps)
+            fr = int(round(frames - hr * frHour - mn * frMin - sc * self.fps))
+
+        # Return SMPTE timecode string.
+        return (
+            str(hr).zfill(2)
+            + spacer
+            + str(mn).zfill(2)
+            + spacer
+            + str(sc).zfill(2)
+            + spacer2
+            + str(fr).zfill(2)
+        )
+
+
 class DVR_ProjectManager:
     def __init__(self) -> None:
         self.__manager = bmd.scriptapp("Resolve").GetProjectManager()
         self.__current_project = self.manager.GetCurrentProject()
         self.__mediapool = self.current_project.GetMediaPool()
-        log.debug(self.manager)
 
     @property
     def manager(self):
@@ -86,15 +212,28 @@ class DVR_SourceClip:
     def __init__(self, dvr_obj) -> None:
         self.__dvr_obj = dvr_obj
 
+    def __str__(self) -> str:
+        return self.name
+
     @property
     def name(self):
         return self.__dvr_obj.GetName()
+
+    @property
+    def clip_properties(self):
+        return self.__dvr_obj.GetClipProperty()
+
+    @property
+    def properties(self):
+        return self.__dvr_obj.GetMetadata()
 
 
 class DVR_Clip:
     def __init__(self, dvr_obj) -> None:
         self.__dvr_obj = dvr_obj
         self.__used_timeline: DVR_Timeline
+        self.smpte = SMPTE()
+        self.smpte.fps = float(self.source.properties.get("Camera FPS"))
 
     def __str__(self) -> str:
         return self.name
@@ -116,20 +255,36 @@ class DVR_Clip:
         self.__used_timeline = val
 
     @property
-    def edit_in(self):
+    def edit_in(self) -> int:
         return self.__dvr_obj.GetStart()
 
     @property
-    def edit_out(self):
+    def edit_out(self) -> int:
         return self.__dvr_obj.GetEnd()
 
     @property
-    def head_in(self):
-        return self.__dvr_obj.GetLeftOffset()
+    def head_in(self) -> int:
+        return self.smpte.get_frames(str(self.properties.get("Start TC")))
 
     @property
-    def tail_out(self):
-        return self.__dvr_obj.GetRightOffset()
+    def tail_out(self) -> int:
+        return self.smpte.get_frames(str(self.properties.get("End TC")))
+
+    @property
+    def left_offset(self) -> int:
+        return int(self.__dvr_obj.GetLeftOffset())
+
+    @property
+    def right_offset(self) -> int:
+        return int(self.__dvr_obj.GetRightOffset())
+
+    @property
+    def src_in(self) -> int:
+        return self.head_in + self.left_offset
+
+    @property
+    def src_out(self) -> int:
+        return self.src_in + self.duration
 
     @property
     def duration(self):
@@ -138,6 +293,12 @@ class DVR_Clip:
     @property
     def color(self):
         return self.__dvr_obj.GetClipColor()
+
+    @property
+    def properties(self):
+        result = self.__dvr_obj.GetProperty()
+        result.update(self.source.clip_properties)
+        return dict(sorted(result.items()))
 
 
 class DVR_Timeline:
@@ -166,7 +327,6 @@ class DVR_Timeline:
     @property
     def is_drop_frame(self):
         result = self.__dvr_obj.GetSetting("timelineDropFrameTimecode")
-        log.debug(result)
         return bool(result)
 
     @property
@@ -181,14 +341,11 @@ class DVR_Timeline:
         return self.__dvr_obj.GetMarkers()
 
     @property
-    def clips(self):
+    def clips(self) -> list[DVR_Clip]:
         result = []
         # TODO: exclude video_tracks as filter
-        log.debug(f"{self.video_tracks = }")
         for vt in self.video_tracks:
-            log.debug(f"{vt = }")
             for c in self.__dvr_obj.GetItemListInTrack("video", 1):
-                log.debug(f"{c = }")
                 clip = DVR_Clip(c)
                 clip.used_in_timeline = self
                 result.append(clip)
@@ -200,6 +357,7 @@ class DVR_Timeline:
 #         pass
 
 #     @property
+#     # ! yo this might be in source.properties["clip"]["Usage"]
 #     def occurrences(self):
 #         result = []
 #         for tl in timelines:
@@ -275,7 +433,6 @@ class Merger:
             tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
         ]
 
-        [log.debug(t) for t in all_timelines]
         # build dict with source mediapool item: clip item
         # ! make sure clip_map has no duplicate keys
         clip_map = {}
@@ -287,30 +444,57 @@ class Merger:
                         clip_map.update({src_clip: [tl_clip]})
                     else:
                         clip_map[src_clip].append(tl_clip)
-            log.info(clip_map)
         except Exception as err:
             log.exception(err, stack_info=True)
 
-        # ? do i need to sort the tl_clips by cut in
+        log.info(clip_map)
+        log.info("--------------------------------------------------")
+        log.info(all_timelines[0].name)
+        smpte = SMPTE()
+        smpte.fps = 25.0
+        for tl_clip in all_timelines[0].clips:
+            log.debug(f"{tl_clip}")
+            log.debug(f"{tl_clip.head_in = }")
+            log.debug(f"{tl_clip.src_in = }")
+            log.debug(f"{tl_clip.edit_in = }")
+            log.debug(f"{tl_clip.edit_out = }")
+            log.debug(f"{tl_clip.src_out = }")
+            log.debug(f"{tl_clip.tail_out = }")
+            log.debug(f"{smpte.get_tc(tl_clip.head_in) = }")
+            log.debug(f"{smpte.get_tc(tl_clip.src_in) = }")
+            log.debug(f"{smpte.get_tc(tl_clip.edit_in) = }")
+            log.debug(f"{smpte.get_tc(tl_clip.edit_out) = }")
+            log.debug(f"{smpte.get_tc(tl_clip.src_out) = }")
+            log.debug(f"{smpte.get_tc(tl_clip.tail_out) = }")
 
+        return
+
+        # ? do i need to sort the tl_clips by cut in
+        log.info("--------------------------------------------------")
         # apply algo... get lower cut in and highest cut out
         #               keep gap_size in mind
-        result = {}  # src_clip: (cut_in, cut_out)
+        result = {}  # src_clip: [(edit_in, edit_out)]
+        smpte = SMPTE()
+        smpte.fps = 25.0
         for src_clip, tl_clips in clip_map.items():
-            result[src_clip] = None
+            result[src_clip] = []
             _in, _out, curr_gap = sys.maxsize, 0, None
             for c in tl_clips:
-                if c.edit_in < _in:
-                    _in = c.edit_in
+                if c.head_in < _in:
+                    _in = c.head_in
                 else:
-                    curr_gap = c.edit_in - _out
+                    curr_gap = c.head_in - _out
                     if curr_gap > self.gapsize:
-                        pass  # ! split clip, effectively getting a new one
-                if c.edit_out > _out:
-                    _out = c.edit_out
-            result[src_clip] = (_in, _out)
-        log.debug(result)
-        return
+                        result[src_clip].append((c.head_in, c.tail_out))
+                        # pass  # ! split clip, effectively getting a new one
+                if c.tail_out > _out:
+                    _out = c.tail_out
+            result[src_clip].append((_in, _out))
+        for k, v in result.items():
+            for i in v:
+                log.info(f"{k}: {smpte.get_tc(i[0])} - {smpte.get_tc(i[1])}")
+                log.info(f"{k}: {i}")
+        # log.debug(result)
 
         # create new timeline
         # append all clips in their best length to timeline
