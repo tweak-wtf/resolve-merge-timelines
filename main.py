@@ -282,16 +282,14 @@ class Merger:
         try:
             for tl in all_timelines:
                 for tl_clip in tl.clips:
-                    log.debug(f"{tl_clip = }")
-                    src_clip = tl_clip.source  # maybe .GetMediaPoolItem()
+                    src_clip = tl_clip.source.name  # maybe .GetMediaPoolItem()
                     if not clip_map.get(src_clip):
                         clip_map.update({src_clip: [tl_clip]})
                     else:
                         clip_map[src_clip].append(tl_clip)
+            log.info(clip_map)
         except Exception as err:
             log.exception(err, stack_info=True)
-        [log.debug(k, v) for k, v in clip_map]
-        return
 
         # ? do i need to sort the tl_clips by cut in
 
@@ -302,15 +300,17 @@ class Merger:
             result[src_clip] = None
             _in, _out, curr_gap = sys.maxsize, 0, None
             for c in tl_clips:
-                if c.cut_in < _in:
-                    _in = c.cut_in
+                if c.edit_in < _in:
+                    _in = c.edit_in
                 else:
-                    curr_gap = c.cut_in - _out
+                    curr_gap = c.edit_in - _out
                     if curr_gap > self.gapsize:
                         pass  # ! split clip, effectively getting a new one
-                if c.cut_out > _out:
-                    _out = c.cut_out
+                if c.edit_out > _out:
+                    _out = c.edit_out
             result[src_clip] = (_in, _out)
+        log.debug(result)
+        return
 
         # create new timeline
         # append all clips in their best length to timeline
@@ -619,10 +619,6 @@ log.addHandler(filehandler)
 
 log.setLevel(logging.DEBUG)
 
-log.debug("DEBUG")
-log.info("INFO")
-log.critical("CRIT")
-log.error("ERR")
 
 app = UI(bmd.scriptapp("Fusion"))
 app.start()
