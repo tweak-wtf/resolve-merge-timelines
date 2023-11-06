@@ -82,6 +82,64 @@ class DVR_ProjectManager:
         return result
 
 
+class DVR_SourceClip:
+    def __init__(self, dvr_obj) -> None:
+        self.__dvr_obj = dvr_obj
+
+    @property
+    def name(self):
+        return self.__dvr_obj.GetName()
+
+
+class DVR_Clip:
+    def __init__(self, dvr_obj) -> None:
+        self.__dvr_obj = dvr_obj
+        self.__used_timeline: DVR_Timeline
+
+    def __str__(self) -> str:
+        return self.name
+
+    @property
+    def name(self):
+        return self.__dvr_obj.GetName()
+
+    @property
+    def source(self):
+        return DVR_SourceClip(self.__dvr_obj.GetMediaPoolItem())
+
+    @property
+    def used_in_timeline(self):
+        return self.__used_timeline
+
+    @used_in_timeline.setter
+    def used_in_timeline(self, val):
+        self.__used_timeline = val
+
+    @property
+    def edit_in(self):
+        return self.__dvr_obj.GetStart()
+
+    @property
+    def edit_out(self):
+        return self.__dvr_obj.GetEnd()
+
+    @property
+    def head_in(self):
+        return self.__dvr_obj.GetLeftOffset()
+
+    @property
+    def tail_out(self):
+        return self.__dvr_obj.GetRightOffset()
+
+    @property
+    def duration(self):
+        return self.__dvr_obj.GetDuration()
+
+    @property
+    def color(self):
+        return self.__dvr_obj.GetClipColor()
+
+
 class DVR_Timeline:
     def __init__(self, dvr_obj) -> None:
         self.__dvr_obj = dvr_obj
@@ -112,7 +170,7 @@ class DVR_Timeline:
         return bool(result)
 
     @property
-    def video_tracks(self):
+    def video_tracks(self) -> list[str]:
         result = []
         for i in range(1, self.__dvr_obj.GetTrackCount("video")):
             result.append(self.__dvr_obj.GetTrackName("video", i))
@@ -129,8 +187,6 @@ class DVR_Timeline:
         log.debug(f"{self.video_tracks = }")
         for vt in self.video_tracks:
             log.debug(f"{vt = }")
-            log.debug(f"{self.__dvr_obj = }")
-            log.debug(f"{self.__dvr_obj.GetItemListInTrack = }")
             for c in self.__dvr_obj.GetItemListInTrack("video", 1):
                 log.debug(f"{c = }")
                 clip = DVR_Clip(c)
@@ -139,66 +195,17 @@ class DVR_Timeline:
         return result
 
 
-class DVR_MediaPoolItem:
-    def __init__(self) -> None:
-        pass
+# class DVR_MediaPoolItem:
+#     def __init__(self) -> None:
+#         pass
 
-    @property
-    def occurrences(self):
-        result = []
-        for tl in timelines:
-            if self in timeline:
-                result.append(self)
-        return result
-
-
-class DVR_Clip:
-    def __init__(self, dvr_obj) -> None:
-        self.__dvr_obj = dvr_obj
-        self.__used_timeline: DVR_Timeline
-
-    def __str__(self) -> str:
-        return self.name
-
-    @property
-    def name(self):
-        return self.__dvr_obj.GetName()
-
-    @property
-    def source(self):
-        return self.__dvr_obj.GetMediaPoolItem()
-
-    @property
-    def used_in_timeline(self) -> DVR_Timeline:
-        return self.__used_timeline
-
-    @used_in_timeline.setter
-    def used_in_timeline(self, val):
-        self.__used_timeline = val
-
-    @property
-    def edit_in(self):
-        return self.__dvr_obj.GetStart()
-
-    @property
-    def edit_out(self):
-        return self.__dvr_obj.GetEnd()
-
-    @property
-    def head_in(self):
-        return self.__dvr_obj.GetLeftOffset()
-
-    @property
-    def tail_out(self):
-        return self.__dvr_obj.GetRightOffset()
-
-    @property
-    def duration(self):
-        return self.__dvr_obj.GetDuration()
-
-    @property
-    def color(self):
-        return self.__dvr_obj.GetClipColor()
+#     @property
+#     def occurrences(self):
+#         result = []
+#         for tl in timelines:
+#             if self in timeline:
+#                 result.append(self)
+#         return result
 
 
 class Merger:
