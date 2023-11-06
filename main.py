@@ -215,6 +215,9 @@ class DVR_SourceClip:
     def __str__(self) -> str:
         return self.name
 
+    def __repr__(self) -> str:
+        return f"{self.name}@{self.id}"
+
     @property
     def id(self) -> str:
         return self.__dvr_obj.GetUniqueId()
@@ -247,6 +250,13 @@ class DVR_Clip:
 
     def __str__(self) -> str:
         return self.name
+
+    def __repr__(self) -> str:
+        return f"{self.name}@{self.src_in}"
+
+    @property
+    def id(self):
+        return self.__dvr_obj.GetUniqueId()
 
     @property
     def name(self):
@@ -446,7 +456,7 @@ class Merger:
             tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
         ]
 
-        # ! make sure occs has no duplicate keys
+        # TODO: make sure occs has no duplicate values
         # build dict with source mediapool item: clip item
         log.info("================================================")
         occs = {}  # occurrences per mediapoolitem
@@ -454,18 +464,25 @@ class Merger:
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
             for tl_clip in tl.clips:
-                src_id = tl_clip.source.id  #! TODO: yay?!
+                src_id = tl_clip.source.id  #! TODO: implement math ops on source
                 if not occs.get(src_id):
                     log.debug(f"New SourceClip {src_id}")
                     occs.update({src_id: [tl_clip]})
                 else:
                     log.debug(f"Updating SourceClip {src_id}")
-                    occs[src_id].append(tl_clip)
+                    # if not tl_clip in occs[src_id]:
+                    #     occs[src_id].append(tl_clip)
+                    occs[src_id].append(tl_clip)  # brings in dupes?
                 log.debug(f"{smpte.get_tc(tl_clip.edit_in) = }")
                 log.debug(f"{smpte.get_tc(tl_clip.src_in) = }")
 
+        log.info(f"{occs = }")
+        _occs = dict(sorted(occs.items()))
+        log.info(f"{_occs = }")
+        log.info(len(occs))
         # ? do i need to sort the tl_clips by cut in
         log.info("================================================")
+
         # apply algo... get lower cut in and highest cut out
         #               keep gap_size in mind
         result = {}  # src_clip: [(edit_in, edit_out)]
@@ -476,18 +493,33 @@ class Merger:
                 if c.src_in < _in:
                     _in = c.src_in
                 else:
+                    #! oh oh... gotta do the same for right side
                     curr_gap = c.src_in - _out
                     log.debug(f"{curr_gap = }")
                     if curr_gap > self.gapsize:
                         log.debug("FOUND weirdo clip... splitting...")
-                        result[src_id].append(
-                            (c.src_in, c.src_out)
-                        )  # ! splits clip, effectively getting a new one
-                        continue
+                        if not (c.src_in, c.src_out) in result[src_id]:
+                            log.debug("adding weirdo to list")
+                            result[src_id].append(
+                                (c.src_in, c.src_out)
+                            )  # ! splits clip, effectively getting a new one
+                            continue
                 if c.src_out > _out:
                     _out = c.src_out
+            # TODO: check if previous src_ins are within gapsize
+            # ?how tf
             result[src_id].append((_in, _out))
             log.debug(result[src_id])
+
+        # result = {}  # src_id: [(edit_in, edit_out)]
+        log.debug(result)
+        for src, occs in result.items():
+            log.info(src)
+            ins = [o[0] for o in occs]
+            outs = [o[1] for o in occs]
+
+            log.debug(f"{ins = }")
+            log.debug(f"{outs = }")
         return
 
         bestlength_items = []
