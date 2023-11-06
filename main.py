@@ -441,17 +441,14 @@ class Merger:
         # ! make sure clip_map has no duplicate keys
         log.info("__________________________________________________")
         clip_map = {}
-        try:
-            for tl in all_timelines:
-                log.debug(f"analyzing timeline: {tl.name}")
-                for tl_clip in tl.clips:
-                    src_clip = tl_clip.source.name  # maybe .GetMediaPoolItem()
-                    if not clip_map.get(src_clip):
-                        clip_map.update({src_clip: [tl_clip]})
-                    else:
-                        clip_map[src_clip].append(tl_clip)
-        except Exception as err:
-            log.exception(err, stack_info=True)
+        for tl in all_timelines:
+            log.debug(f"analyzing timeline: {tl.name}")
+            for tl_clip in tl.clips:
+                src_clip = tl_clip.source  # maybe .GetMediaPoolItem()
+                if not clip_map.get(src_clip):
+                    clip_map.update({src_clip: [tl_clip]})
+                else:
+                    clip_map[src_clip].append(tl_clip)
 
         # log.info(clip_map)
         log.info("__________________________________________________")
