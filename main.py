@@ -335,8 +335,8 @@ class DVR_Timeline:
     @property
     def video_tracks(self) -> list[str]:
         result = []
-        for i in range(1, self.__dvr_obj.GetTrackCount("video")):
-            result.append(self.__dvr_obj.GetTrackName("video", i))
+        for i in range(0, self.__dvr_obj.GetTrackCount("video")):
+            result.append(self.__dvr_obj.GetTrackName("video", i + 1))
         return result
 
     @property
@@ -346,9 +346,10 @@ class DVR_Timeline:
     @property
     def clips(self) -> list[DVR_Clip]:
         result = []
+        log.debug(f"{self.video_tracks = }")
         # TODO: exclude video_tracks as filter
-        for vt in self.video_tracks:
-            for c in self.__dvr_obj.GetItemListInTrack("video", 1):
+        for i in range(len(self.video_tracks)):
+            for c in self.__dvr_obj.GetItemListInTrack("video", i + 1):
                 clip = DVR_Clip(c)
                 clip.used_in_timeline = self
                 result.append(clip)
