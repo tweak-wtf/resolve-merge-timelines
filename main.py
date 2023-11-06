@@ -286,8 +286,8 @@ class DVR_Clip:
 
     @property
     def src_out(self) -> int:
-        log.debug(f"{self.duration = }")
-        log.debug(f"{self.src_in = }")
+        # log.debug(f"{self.duration = }")
+        # log.debug(f"{self.src_in = }")
         # ? why doesn't this here work: self.tail_out - self.right_offset
         return self.src_in + self.duration
 
@@ -439,9 +439,11 @@ class Merger:
 
         # build dict with source mediapool item: clip item
         # ! make sure clip_map has no duplicate keys
+        log.info("__________________________________________________")
         clip_map = {}
         try:
             for tl in all_timelines:
+                log.debug(f"analyzing timeline: {tl.name}")
                 for tl_clip in tl.clips:
                     src_clip = tl_clip.source.name  # maybe .GetMediaPoolItem()
                     if not clip_map.get(src_clip):
@@ -451,28 +453,22 @@ class Merger:
         except Exception as err:
             log.exception(err, stack_info=True)
 
-        log.info(clip_map)
-        log.info("--------------------------------------------------")
-        log.info(all_timelines[0].name)
+        # log.info(clip_map)
+        log.info("__________________________________________________")
+        # log.info(all_timelines[0].name)
         smpte = SMPTE()
         smpte.fps = 25.0
         for tl_clip in all_timelines[0].clips:
-            log.debug(f"{tl_clip}")
-            log.debug(f"{tl_clip.head_in = }")
-            log.debug(f"{tl_clip.src_in = }")
-            log.debug(f"{tl_clip.edit_in = }")
-            log.debug(f"{tl_clip.edit_out = }")
-            log.debug(f"{tl_clip.src_out = }")
-            log.debug(f"{tl_clip.tail_out = }")
             log.debug(f"{smpte.get_tc(tl_clip.head_in) = }")
             log.debug(f"{smpte.get_tc(tl_clip.src_in) = }")
             log.debug(f"{smpte.get_tc(tl_clip.edit_in) = }")
             log.debug(f"{smpte.get_tc(tl_clip.edit_out) = }")
             log.debug(f"{smpte.get_tc(tl_clip.src_out) = }")
             log.debug(f"{smpte.get_tc(tl_clip.tail_out) = }")
+            log.debug("==================================================")
 
         # ? do i need to sort the tl_clips by cut in
-        log.info("--------------------------------------------------")
+        log.info("__________________________________________________")
         # apply algo... get lower cut in and highest cut out
         #               keep gap_size in mind
         result = {}  # src_clip: [(edit_in, edit_out)]
