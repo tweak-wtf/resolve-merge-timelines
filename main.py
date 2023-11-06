@@ -284,6 +284,8 @@ class DVR_Clip:
 
     @property
     def src_out(self) -> int:
+        log.debug(f"{self.duration = }")
+        log.debug(f"{self.src_in = }")
         return self.src_in + self.duration
 
     @property
@@ -467,34 +469,35 @@ class Merger:
             log.debug(f"{smpte.get_tc(tl_clip.src_out) = }")
             log.debug(f"{smpte.get_tc(tl_clip.tail_out) = }")
 
-        return
-
         # ? do i need to sort the tl_clips by cut in
         log.info("--------------------------------------------------")
         # apply algo... get lower cut in and highest cut out
         #               keep gap_size in mind
         result = {}  # src_clip: [(edit_in, edit_out)]
-        smpte = SMPTE()
-        smpte.fps = 25.0
         for src_clip, tl_clips in clip_map.items():
             result[src_clip] = []
             _in, _out, curr_gap = sys.maxsize, 0, None
             for c in tl_clips:
-                if c.head_in < _in:
-                    _in = c.head_in
+                if c.src_in < _in:
+                    _in = c.src_in
                 else:
-                    curr_gap = c.head_in - _out
+                    curr_gap = c.src_in - _out
                     if curr_gap > self.gapsize:
-                        result[src_clip].append((c.head_in, c.tail_out))
-                        # pass  # ! split clip, effectively getting a new one
-                if c.tail_out > _out:
-                    _out = c.tail_out
+                        log.debug("FOUND weirdo clip... splitting...")
+                        result[src_clip].append(
+                            (c.src_in, c.src_out)
+                        )  # ! splits clip, effectively getting a new one
+                        continue
+                if c.src_out > _out:
+                    _out = c.src_out
             result[src_clip].append((_in, _out))
+
         for k, v in result.items():
             for i in v:
                 log.info(f"{k}: {smpte.get_tc(i[0])} - {smpte.get_tc(i[1])}")
                 log.info(f"{k}: {i}")
-        # log.debug(result)
+        log.debug(result)
+        return
 
         # create new timeline
         # append all clips in their best length to timeline
