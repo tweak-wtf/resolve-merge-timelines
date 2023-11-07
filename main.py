@@ -464,23 +464,150 @@ class Merger:
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
             for tl_clip in tl.clips:
-                src_id = tl_clip.source.id  #! TODO: implement math ops on source
-                if not occs.get(src_id):
-                    log.debug(f"New SourceClip {src_id}")
-                    occs.update({src_id: [tl_clip]})
+                src_clip = tl_clip.source
+                # never seen this MPI before... add it
+                if not src_clip.id in occs.keys():
+                    occs.update(
+                        {
+                            src_clip.id: {
+                                "source": src_clip,
+                                "usages": {
+                                    tl_clip.id: {
+                                        "clip": tl_clip,
+                                        "usage": (tl_clip.src_in, tl_clip.src_out),
+                                    }
+                                },
+                            }
+                        }
+                    )
                 else:
-                    log.debug(f"Updating SourceClip {src_id}")
-                    # if not tl_clip in occs[src_id]:
-                    #     occs[src_id].append(tl_clip)
-                    occs[src_id].append(tl_clip)  # brings in dupes?
-                log.debug(f"{smpte.get_tc(tl_clip.edit_in) = }")
-                log.debug(f"{smpte.get_tc(tl_clip.src_in) = }")
+                    occs[src_clip.id]["usages"].update(
+                        {
+                            tl_clip.id: {
+                                "clip": tl_clip,
+                                "usage": (tl_clip.src_in, tl_clip.src_out),
+                            }
+                        }
+                    )
 
+        # sort occurrences and remove duplicates
+        clip_map = {}
+        for src_id, src_v in occs.items():
+            clip_set = set([u["usage"] for u in src_v["usages"].values()])
+            clip_map[src_id] = sorted(clip_set, key=lambda k: k[0])
         log.info(f"{occs = }")
-        _occs = dict(sorted(occs.items()))
+        log.info(f"{clip_map = }")
+
+        # {'74c773df-4b70-41e0-a0a4-c2f0e25f0414': [(1755093, 1755137), (1755237, 1755394)]}
+        foo = [
+            (1755093, 1755113),
+            (1755244, 1755344),
+            (1755293, 1755318),
+            (1755416, 1755436),
+        ]
+        bar = (
+            {
+                "mediaPoolItem": "foo",
+                "startFrame": 1755093,
+                "endFrame": 1755113,
+                "mediaType": 1,
+                "trackIndex": 1,
+            },
+            {
+                "mediaPoolItem": "foo",
+                "startFrame": 1755293,
+                "endFrame": 1755318,
+                "mediaType": 1,
+                "trackIndex": 1,
+            },
+            {
+                "mediaPoolItem": "foo",
+                "startFrame": 1755416,
+                "endFrame": 1755436,
+                "mediaType": 1,
+                "trackIndex": 1,
+            },
+        )
+        blis = {k: list() for k in clip_map.keys()}
+        log.debug(f"initialized blis: {blis}")
+        for src, clips in clip_map.items():
+            start, end = clips[0][0], clips[0][1]
+            for i in range(1, len(clips)):
+                this_occ = clips[i]
+                last_occ = clips[i - 1]
+                curr_diff = this_occ[0] - last_occ[1]
+                if curr_diff > self.gapsize:
+                    # shall create new plate
+                    log.debug(f"found new plate...")
+                    log.debug(f"{curr_diff = }")
+                    blis[src].append(
+                        {
+                            "mediaPoolItem": occs[src]["source"].pls_work,
+                            "startFrame": last_occ[0],
+                            "endFrame": last_occ[1],
+                            "mediaType": 1,
+                            "trackIndex": 1,
+                        }
+                    )
+                    # update start
+                    log.debug(f"> GAPSIZE resetting to: {this_occ}")
+                    start, end = this_occ[0], this_occ[1]
+                    continue
+                else:
+                    # update end
+                    end = this_occ[1] if this_occ[1] > end else end
+                    log.debug(f"< GAPSIZE current bli {start} - {end}")
+            blis[src].append(
+                {
+                    "mediaPoolItem": occs[src]["source"].pls_work,
+                    "startFrame": start,
+                    "endFrame": end,
+                    "mediaType": 1,
+                    "trackIndex": 1,
+                }
+            )
+            # got 1 element if no weird shit hap[penning]
+        log.debug(f"{blis = }")
+
+        results = []
+        for bli in blis.values():
+            for b in bli:
+                results.append(b)
+        # results = [zip(i) for i in blis.values()]
+        log.debug(f"{results = }")
+
+        # create timeline
+        pmanager.mediapool.CreateEmptyTimeline("lel2")
+        pmanager.mediapool.AppendToTimeline(results)
+
+        return
+
+        _occs = {}
+        for src_id, src_v in occs.items():
+            src_v["usages"] = dict(sorted())
+            for clip_id, clip_v in src_v["usages"].items():
+                pass
+            s_occs = sorted(v, key=lambda clip: clip.src_in)
+            _occs.update({k: s_occs})
         log.info(f"{_occs = }")
         log.info(len(occs))
+
         # ? do i need to sort the tl_clips by cut in
+        # --> yeah i think so, but by src_in
+        log.info("================================================")
+
+        for src_id, occs in occs.items():
+            bli = []
+            _in, _out = sys.maxsize, 0
+            for i in range(1, len(occs)):
+                this_occ = occs[i]
+                last_occ = occs[i - 1]
+                curr_diff = this_occ.src_in - last_occ.src_out
+                if curr_diff > self.gapsize:
+                    log.debug(f"{curr_diff = }")
+                else:
+                    log.debug(f"{curr_diff = }")
+
         log.info("================================================")
 
         # apply algo... get lower cut in and highest cut out
@@ -520,7 +647,6 @@ class Merger:
 
             log.debug(f"{ins = }")
             log.debug(f"{outs = }")
-        return
 
         bestlength_items = []
         for k, v in result.items():
