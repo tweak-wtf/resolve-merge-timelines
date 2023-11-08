@@ -556,13 +556,25 @@ class Merger:
         log.info(f"{blis = }")
 
         result = []
+        smpte.fps = 25
         for k, v in blis.items():
+            tc_head_in = occs[k]["source"].pls_work.GetClipProperty("Start TC")
+            f_head_in = smpte.get_frames(tc_head_in)
             for i in v:
+                log.debug(smpte.get_tc(min(i)))
+                log.debug(smpte.get_tc(max(i)))
+                log.debug(f"{tc_head_in = }")
+                log.debug(f"{f_head_in = }")
+                start = min(i)
+                log.debug(f"{start = }")
+                end = max(i)
+                # ! resolve frame in MediapoolItems
+                #   it's actually using relative frames. e.g. start of source 12:42:13:12 -> f0
                 result.append(
                     {
                         "mediaPoolItem": occs[k]["source"].pls_work,
-                        "startFrame": min(i),
-                        "endFrame": max(i),
+                        "startFrame": start - f_head_in,
+                        "endFrame": end - f_head_in,
                         "mediaType": 1,
                         "trackIndex": 1,
                     }
