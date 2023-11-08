@@ -443,7 +443,7 @@ class Merger:
 
         for s in sets[1:]:
             # compare current in with last out, aka. soft gap between 2 ranges
-            if min(s) - max(current_range) <= 10:
+            if min(s) - max(current_range) <= self.gapsize:
                 # clip is in gapsize or inside previous clip...
                 current_range.update(s)
             else:
