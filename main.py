@@ -1,5 +1,7 @@
+import os
 import sys
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 clipcolor_names = [
@@ -843,34 +845,37 @@ class UI:
             log.debug(event)
 
 
-log = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
-)
-errhandler = logging.StreamHandler(sys.stderr)
-errhandler.setLevel(logging.ERROR)
-errhandler.setFormatter(formatter)
-log.addHandler(errhandler)
-
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-handler.setFormatter(formatter)
-log.addHandler(handler)
-
-# TODO: implement log location
-filehandler = logging.FileHandler(
-    str(
-        Path(
-            r"C:\Users\tony.dorfmeister\AppData\Roaming\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Comp\resolve-merge-timelines\log.log"
-        )
+def get_logger() -> logging.Logger:
+    log = logging.getLogger(__name__)
+    formatter = logging.Formatter(
+        "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
     )
-)
-filehandler.setLevel(logging.DEBUG)
-filehandler.setFormatter(formatter)
-log.addHandler(filehandler)
 
-log.setLevel(logging.DEBUG)
+    #
+    errhandler = logging.StreamHandler(sys.stderr)
+    errhandler.setLevel(logging.ERROR)
+    errhandler.setFormatter(formatter)
+    log.addHandler(errhandler)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(formatter)
+    log.addHandler(handler)
+
+    log_path = Path.home() / "logs" / "dvr.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.touch(exist_ok=True)
+    filehandler = RotatingFileHandler(
+        log_path, mode="a+", maxBytes=(4 * (1024 ^ 2)), backupCount=2
+    )
+    filehandler.setLevel(logging.DEBUG)
+    filehandler.setFormatter(formatter)
+    log.addHandler(filehandler)
+
+    log.setLevel(logging.DEBUG)
+    return log
 
 
+log = get_logger()
 app = UI(bmd.scriptapp("Fusion"))
 app.start()
