@@ -848,7 +848,7 @@ class UI:
 def get_logger() -> logging.Logger:
     log = logging.getLogger(__name__)
     formatter = logging.Formatter(
-        "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
+        "[%(filename)s:%(lineno)d] %(asctime)s %(levelname)-8s %(message)s"
     )
 
     #
@@ -865,9 +865,8 @@ def get_logger() -> logging.Logger:
     log_path = Path.home() / "logs" / "dvr.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.touch(exist_ok=True)
-    filehandler = RotatingFileHandler(
-        log_path, mode="a+", maxBytes=(4 * (1024 ^ 2)), backupCount=2
-    )
+    log_handler_paras = {"mode": "a", "maxBytes": 4 * pow(1024, 3), "backupCount": 2}
+    filehandler = RotatingFileHandler(log_path, **log_handler_paras)
     filehandler.setLevel(logging.DEBUG)
     filehandler.setFormatter(formatter)
     log.addHandler(filehandler)
