@@ -446,21 +446,43 @@ class Merger:
     def color_to_skip(self, var):
         self.__color_to_skip = var
 
-    def merge(self):
-        pmanager = DVR_ProjectManager()
-        smpte = SMPTE()
-        smpte.fps = 25
-        # query all timelines that match the given filters
-        # TODO: implement regex include and exclude
-        all_timelines = [
-            tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
-        ]
+    def find_best_ranges(self, sets):
+        # Sort the sets by their minimum values
+        sets.sort(key=lambda s: min(s))
 
-        # TODO: make sure occs has no duplicate values
-        # build dict with source mediapool item: clip item
-        log.info("================================================")
+        best_ranges = []
+        current_range = sets[0].copy()
+
+        for s in sets[1:]:
+            if min(s) - max(current_range) <= 10:
+                current_range.update(s)
+            else:
+                best_ranges.append(list(current_range))
+                current_range = s.copy()
+
+        best_ranges.append(list(current_range))
+
+        # Find the best combination of ranges
+        def total_length(ranges):
+            return sum(len(r) for r in ranges)
+
+        best_combination = []
+        best_length = 0
+
+        for i in range(len(best_ranges)):
+            for j in range(i, len(best_ranges)):
+                combined_ranges = best_ranges[i : j + 1]
+                combined_length = total_length(combined_ranges)
+
+                if combined_length > best_length:
+                    best_combination = combined_ranges
+                    best_length = combined_length
+
+        return best_combination
+
+    def get_occurences(self, timelines):
         occs = {}  # occurrences per mediapoolitem
-        for tl in all_timelines:
+        for tl in timelines:
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
             for tl_clip in tl.clips:
@@ -490,6 +512,22 @@ class Merger:
                         }
                     )
 
+        return occs
+
+    def merge(self):
+        pmanager = DVR_ProjectManager()
+        smpte = SMPTE()
+        smpte.fps = 25
+        # query all timelines that match the given filters
+        # TODO: implement regex include and exclude
+        all_timelines = [
+            tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
+        ]
+
+        # TODO: make sure occs has no duplicate values
+        log.info("================================================")
+        occs = self.get_occurences(all_timelines)
+
         # sort occurrences and remove duplicates
         clip_map = {}
         for src_id, src_v in occs.items():
@@ -498,194 +536,44 @@ class Merger:
         log.info(f"{occs = }")
         log.info(f"{clip_map = }")
 
-        # {'74c773df-4b70-41e0-a0a4-c2f0e25f0414': [(1755093, 1755137), (1755237, 1755394)]}
-        foo = [
-            (1755093, 1755113),
-            (1755244, 1755344),
-            (1755293, 1755318),
-            (1755416, 1755436),
-        ]
-        bar = (
-            {
-                "mediaPoolItem": "foo",
-                "startFrame": 1755093,
-                "endFrame": 1755113,
-                "mediaType": 1,
-                "trackIndex": 1,
-            },
-            {
-                "mediaPoolItem": "foo",
-                "startFrame": 1755293,
-                "endFrame": 1755318,
-                "mediaType": 1,
-                "trackIndex": 1,
-            },
-            {
-                "mediaPoolItem": "foo",
-                "startFrame": 1755416,
-                "endFrame": 1755436,
-                "mediaType": 1,
-                "trackIndex": 1,
-            },
-        )
-        blis = {k: list() for k in clip_map.keys()}
-        log.debug(f"initialized blis: {blis}")
-        for src, clips in clip_map.items():
-            start, end = clips[0][0], clips[0][1]
-            for i in range(1, len(clips)):
-                this_occ = clips[i]
-                last_occ = clips[i - 1]
-                curr_diff = this_occ[0] - last_occ[1]
-                if curr_diff > self.gapsize:
-                    # shall create new plate
-                    log.debug(f"found new plate...")
-                    log.debug(f"{curr_diff = }")
-                    blis[src].append(
-                        {
-                            "mediaPoolItem": occs[src]["source"].pls_work,
-                            "startFrame": last_occ[0],
-                            "endFrame": last_occ[1],
-                            "mediaType": 1,
-                            "trackIndex": 1,
-                        }
-                    )
-                    # update start
-                    log.debug(f"> GAPSIZE resetting to: {this_occ}")
-                    start, end = this_occ[0], this_occ[1]
-                    continue
-                else:
-                    # update end
-                    end = this_occ[1] if this_occ[1] > end else end
-                    log.debug(f"< GAPSIZE current bli {start} - {end}")
-            blis[src].append(
-                {
-                    "mediaPoolItem": occs[src]["source"].pls_work,
-                    "startFrame": start,
-                    "endFrame": end,
-                    "mediaType": 1,
-                    "trackIndex": 1,
-                }
-            )
-            # got 1 element if no weird shit hap[penning]
-        log.debug(f"{blis = }")
+        # framelists = {k: set(range(v[0], v[1] + 1)) for k, v in clip_map.items()}
+        framelists = {}
+        for k, v in clip_map.items():
+            framelists[k] = [set(range(i[0], i[1])) for i in v]
+            log.debug(type(framelists[k]))
+            for i in framelists[k]:
+                log.debug(type(i))
+        log.info(f"{framelists = }")
 
-        results = []
-        for bli in blis.values():
-            for b in bli:
-                results.append(b)
-        # results = [zip(i) for i in blis.values()]
-        log.debug(f"{results = }")
+        blis = {}
+        for k, v in framelists.items():
+            foo = self.find_best_ranges(v)
+            for f in foo:
+                log.debug(f"{f = }")
+                log.debug(f"{len(f) = }")
+            blis[k] = self.find_best_ranges(v)
+            log.debug(f"{len(blis[k]) = }")
+        log.info(f"{blis = }")
 
-        # create timeline
-        pmanager.mediapool.CreateEmptyTimeline("lel2")
-        pmanager.mediapool.AppendToTimeline(results)
-
-        return
-
-        _occs = {}
-        for src_id, src_v in occs.items():
-            src_v["usages"] = dict(sorted())
-            for clip_id, clip_v in src_v["usages"].items():
-                pass
-            s_occs = sorted(v, key=lambda clip: clip.src_in)
-            _occs.update({k: s_occs})
-        log.info(f"{_occs = }")
-        log.info(len(occs))
-
-        # ? do i need to sort the tl_clips by cut in
-        # --> yeah i think so, but by src_in
-        log.info("================================================")
-
-        for src_id, occs in occs.items():
-            bli = []
-            _in, _out = sys.maxsize, 0
-            for i in range(1, len(occs)):
-                this_occ = occs[i]
-                last_occ = occs[i - 1]
-                curr_diff = this_occ.src_in - last_occ.src_out
-                if curr_diff > self.gapsize:
-                    log.debug(f"{curr_diff = }")
-                else:
-                    log.debug(f"{curr_diff = }")
-
-        log.info("================================================")
-
-        # apply algo... get lower cut in and highest cut out
-        #               keep gap_size in mind
-        result = {}  # src_clip: [(edit_in, edit_out)]
-        for src_id, tl_clips in occs.items():
-            result[src_id] = []
-            _in, _out, curr_gap = sys.maxsize, 0, None
-            for c in tl_clips:
-                if c.src_in < _in:
-                    _in = c.src_in
-                else:
-                    #! oh oh... gotta do the same for right side
-                    curr_gap = c.src_in - _out
-                    log.debug(f"{curr_gap = }")
-                    if curr_gap > self.gapsize:
-                        log.debug("FOUND weirdo clip... splitting...")
-                        if not (c.src_in, c.src_out) in result[src_id]:
-                            log.debug("adding weirdo to list")
-                            result[src_id].append(
-                                (c.src_in, c.src_out)
-                            )  # ! splits clip, effectively getting a new one
-                            continue
-                if c.src_out > _out:
-                    _out = c.src_out
-            # TODO: check if previous src_ins are within gapsize
-            # ?how tf
-            result[src_id].append((_in, _out))
-            log.debug(result[src_id])
-
-        # result = {}  # src_id: [(edit_in, edit_out)]
-        log.debug(result)
-        for src, occs in result.items():
-            log.info(src)
-            ins = [o[0] for o in occs]
-            outs = [o[1] for o in occs]
-
-            log.debug(f"{ins = }")
-            log.debug(f"{outs = }")
-
-        bestlength_items = []
-        for k, v in result.items():
+        result = []
+        for k, v in blis.items():
             for i in v:
-                bestlength_items.append(
+                result.append(
                     {
-                        "mediaPoolItem": k.pls_work,
-                        "startFrame": i[0],
-                        "endFrame": i[1],
+                        "mediaPoolItem": occs[k]["source"].pls_work,
+                        "startFrame": min(i),
+                        "endFrame": max(i),
                         "mediaType": 1,
                         "trackIndex": 1,
                     }
                 )
-                log.info(f"{k}: {smpte.get_tc(i[0])} - {smpte.get_tc(i[1])}")
-                log.info(f"{k}: {i}")
-        log.debug(bestlength_items)
-        log.debug(len(bestlength_items))
+        log.info(f"{result = }")
 
-        # # ! goofy loop again lol
-        # for
-
-        # bestLengthItems.append(
-        #                 {
-        #                     'mediaPoolItem': mediaPoolItem,
-        #                     'startFrame': startFrame,
-        #                     'endFrame': endFrame,
-        #                     'mediaType': 1,
-        #                     'trackIndex': 1,
-        #                 })
-
-        # create new timeline
-        # append all clips in their best length to timeline
+        # create timeline
         pmanager.mediapool.CreateEmptyTimeline("lel2")
-        pmanager.mediapool.AppendToTimeline(bestlength_items)
-        log.debug("YAYA?!")
-        try:
-            log.debug(self.mode)
-        except Exception as err:
-            log.debug(err)
+        pmanager.mediapool.AppendToTimeline(result)
+
+        return
 
 
 class UI:
