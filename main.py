@@ -23,41 +23,43 @@ clipcolor_names = [
 merge_names = ["Reel Name", "Source File"]
 
 
-class SMPTE(object):
+class TC:
     """Frames to SMPTE timecode converter and reverse."""
 
     # ! everything in here should be classmethods,vars since we don't need to instantiate an object ever
 
-    def __init__(self):
-        self.__fps = 24.0
-        self.__is_dropframe = False
+    __fps = 24.0
+    __is_dropframe = False
 
-    @property
-    def fps(self) -> float:
-        return self.__fps
+    @classmethod
+    def get_fps(cls) -> float:
+        return cls.__fps
 
-    @fps.setter
-    def fps(self, val):
-        val = float(val)
-        self.__fps = val
+    @classmethod
+    def set_fps(cls, para: float):
+        if not isinstance(para, (float, int)):
+            raise RuntimeError(f"{para} must be of type bool. {type(para)} != float")
+        cls.__fps = float(para)
 
-    @property
-    def is_dropframe(self) -> float:
-        return self.__is_dropframe
+    @classmethod
+    def get_is_dropframe(cls) -> bool:
+        return cls.__is_dropframe
 
-    @is_dropframe.setter
-    def is_dropframe(self, val):
-        val = float(val)
-        self.__is_dropframe = val
+    @classmethod
+    def set_is_dropframe(cls, para):
+        if not isinstance(para, bool):
+            raise RuntimeError(f"{para} must be of type bool. {type(para)} != bool")
+        cls.__is_dropframe = para
 
-    def get_frames(self, tc: str) -> int:
+    @classmethod
+    def get_frames(cls, tc: str) -> int:
         """Converts SMPTE timecode to frame count."""
 
         if not tc or tc == "":
             return None
 
-        if int(tc[9:]) > self.fps:
-            raise ValueError("SMPTE timecode to frame rate mismatch.", tc, self.fps)
+        if int(tc[9:]) > cls.__fps:
+            raise ValueError("SMPTE timecode to frame rate mismatch.", tc, cls.__fps)
 
         hours = int(tc[:2])
         minutes = int(tc[3:5])
@@ -67,9 +69,9 @@ class SMPTE(object):
         totalMinutes = int(60 * hours + minutes)
 
         # Drop frame calculation using the Duncan/Heidelberger method.
-        if self.is_dropframe:
-            dropFrames = int(round(self.fps * 0.066666))
-            timeBase = int(round(self.fps))
+        if cls.__is_dropframe:
+            dropFrames = int(round(cls.__fps * 0.066666))
+            timeBase = int(round(cls.__fps))
             hourFrames = int(timeBase * 60 * 60)
             minuteFrames = int(timeBase * 60)
             frm = int(
@@ -83,26 +85,27 @@ class SMPTE(object):
             )
         # Non drop frame calculation.
         else:
-            self.fps = int(round(self.fps))
-            frm = int((totalMinutes * 60 + seconds) * self.fps + frames)
+            __fps = int(round(cls.__fps))
+            frm = int((totalMinutes * 60 + seconds) * __fps + frames)
 
         return frm
 
-    def get_tc(self, frames: int) -> str:
+    @classmethod
+    def get_tc(cls, frames: int) -> str:
         """Converts frame count to SMPTE timecode."""
 
         frames = abs(frames)
 
         # Drop frame calculation using the Duncan/Heidelberger method.
-        if self.is_dropframe:
+        if cls.__is_dropframe:
             spacer = ":"
             spacer2 = ";"
 
-            dropFrames = int(round(self.fps * 0.066666))
-            framesPerHour = int(round(self.fps * 3600))
+            dropFrames = int(round(cls.__fps * 0.066666))
+            framesPerHour = int(round(cls.__fps * 3600))
             framesPer24Hours = framesPerHour * 24
-            framesPer10Minutes = int(round(self.fps * 600))
-            framesPerMinute = int(round(self.fps) * 60 - dropFrames)
+            framesPer10Minutes = int(round(cls.__fps * 600))
+            framesPerMinute = int(round(cls.__fps) * 60 - dropFrames)
 
             frames = frames % framesPer24Hours
 
@@ -118,7 +121,7 @@ class SMPTE(object):
             else:
                 frames = frames + dropFrames * 9 * d
 
-            frRound = int(round(self.fps))
+            frRound = int(round(cls.__fps))
             hr = int(frames // frRound // 60 // 60)
             mn = int((frames // frRound // 60) % 60)
             sc = int((frames // frRound) % 60)
@@ -126,17 +129,17 @@ class SMPTE(object):
 
         # Non drop frame calculation.
         else:
-            self.fps = int(round(self.fps))
+            __fps = int(round(cls.__fps))
             spacer = ":"
             spacer2 = spacer
 
-            frHour = self.fps * 3600
-            frMin = self.fps * 60
+            frHour = __fps * 3600
+            frMin = __fps * 60
 
             hr = int(frames // frHour)
             mn = int((frames - hr * frHour) // frMin)
-            sc = int((frames - hr * frHour - mn * frMin) // self.fps)
-            fr = int(round(frames - hr * frHour - mn * frMin - sc * self.fps))
+            sc = int((frames - hr * frHour - mn * frMin) // __fps)
+            fr = int(round(frames - hr * frHour - mn * frMin - sc * __fps))
 
         # Return SMPTE timecode string.
         return (
@@ -245,8 +248,6 @@ class DVR_Clip:
     def __init__(self, dvr_obj) -> None:
         self.__dvr_obj = dvr_obj
         self.__used_timeline: DVR_Timeline
-        self.smpte = SMPTE()
-        self.smpte.fps = float(self.source.properties.get("Camera FPS"))
 
     def __str__(self) -> str:
         return self.name
@@ -284,11 +285,11 @@ class DVR_Clip:
 
     @property
     def head_in(self) -> int:
-        return self.smpte.get_frames(str(self.source.properties.get("Start TC")))
+        return TC.get_frames(str(self.source.properties.get("Start TC")))
 
     @property
     def tail_out(self) -> int:
-        return self.smpte.get_frames(str(self.source.properties.get("End TC")))
+        return TC.get_frames(str(self.source.properties.get("End TC")))
 
     @property
     def left_offset(self) -> int:
@@ -304,8 +305,6 @@ class DVR_Clip:
 
     @property
     def src_out(self) -> int:
-        # log.debug(f"{self.duration = }")
-        # log.debug(f"{self.src_in = }")
         # ? why doesn't this here work: self.tail_out - self.right_offset
         return self.src_in + self.duration
 
@@ -374,20 +373,6 @@ class DVR_Timeline:
         return result
 
 
-# class DVR_MediaPoolItem:
-#     def __init__(self) -> None:
-#         pass
-
-#     @property
-#     # ! yo this might be in source.properties["clip"]["Usage"]
-#     def occurrences(self):
-#         result = []
-#         for tl in timelines:
-#             if self in timeline:
-#                 result.append(self)
-#         return result
-
-
 class Merger:
     def __init__(self, fu) -> None:
         self.fu = fu
@@ -446,17 +431,21 @@ class Merger:
     def color_to_skip(self, var):
         self.__color_to_skip = var
 
+    # ! i don't need sets here, can we just do it with lists?
     def find_best_ranges(self, sets):
-        # Sort the sets by their minimum values
+        # thanks chatGPT
         sets.sort(key=lambda s: min(s))
 
         best_ranges = []
         current_range = sets[0].copy()
 
         for s in sets[1:]:
+            # compare current in with last out, aka. soft gap between 2 ranges
             if min(s) - max(current_range) <= 10:
+                # clip is in gapsize or inside previous clip...
                 current_range.update(s)
             else:
+                # hard gap right here. add current range to best_ranges and update current
                 best_ranges.append(list(current_range))
                 current_range = s.copy()
 
@@ -516,15 +505,13 @@ class Merger:
 
     def merge(self):
         pmanager = DVR_ProjectManager()
-        smpte = SMPTE()
-        smpte.fps = 25
+        TC.set_fps(25)
         # query all timelines that match the given filters
         # TODO: implement regex include and exclude
         all_timelines = [
             tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
         ]
 
-        # TODO: make sure occs has no duplicate values
         log.info("================================================")
         occs = self.get_occurences(all_timelines)
 
@@ -556,13 +543,12 @@ class Merger:
         log.info(f"{blis = }")
 
         result = []
-        smpte.fps = 25
         for k, v in blis.items():
             tc_head_in = occs[k]["source"].pls_work.GetClipProperty("Start TC")
-            f_head_in = smpte.get_frames(tc_head_in)
+            f_head_in = TC.get_frames(tc_head_in)
             for i in v:
-                log.debug(smpte.get_tc(min(i)))
-                log.debug(smpte.get_tc(max(i)))
+                log.debug(TC.get_tc(min(i)))
+                log.debug(TC.get_tc(max(i)))
                 log.debug(f"{tc_head_in = }")
                 log.debug(f"{f_head_in = }")
                 start = min(i)
@@ -857,12 +843,6 @@ class UI:
             log.debug(event)
 
 
-# logging.basicConfig(
-#     format="%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s",
-#     datefmt="%Y-%m-%d:%H:%M:%S",
-#     level=logging.DEBUG,
-# )
-
 log = logging.getLogger(__name__)
 formatter = logging.Formatter(
     "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
@@ -877,6 +857,7 @@ handler.setLevel(logging.DEBUG)
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
+# TODO: implement log location
 filehandler = logging.FileHandler(
     str(
         Path(
