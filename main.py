@@ -574,7 +574,7 @@ class Merger:
         log.info(f"{result = }")
 
         # create timeline
-        pmanager.mediapool.CreateEmptyTimeline("lel2")
+        pmanager.mediapool.CreateEmptyTimeline(self.timeline_out)
         pmanager.mediapool.AppendToTimeline(result)
 
         return
