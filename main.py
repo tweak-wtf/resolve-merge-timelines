@@ -311,6 +311,7 @@ class DVR_Clip:
 
     @property
     def duration(self):
+        # TODO: support timeremaps
         return self.__dvr_obj.GetDuration()
 
     @property
@@ -491,6 +492,7 @@ class Merger:
             log.debug(f"analyzing timeline: {tl.name}")
             log.debug(f"{tl.properties}")
             for tl_clip in tl.clips:
+                log.debug(f"{tl_clip.properties = }")
                 log.debug(f"{tl_clip.color} -- {self.color_to_skip}")
                 if not tl_clip.color == self.color_to_skip:
                     src_clip = tl_clip.source
