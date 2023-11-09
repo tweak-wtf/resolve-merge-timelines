@@ -23,7 +23,6 @@ clipcolor_names = [
     "Brown",
     "Chocolate",
 ]
-merge_names = ["Reel Name", "Source File"]
 
 
 class TC:
@@ -234,10 +233,6 @@ class DVR_SourceClip:
         return self.__dvr_obj.GetName()
 
     @property
-    def clip_properties(self):
-        return self.__dvr_obj.GetClipProperty()
-
-    @property
     def properties(self):
         result = self.__dvr_obj.GetMetadata()
         result.update(self.__dvr_obj.GetClipProperty())
@@ -347,6 +342,10 @@ class DVR_Timeline:
     @property
     def name(self):
         return str(self.__dvr_obj.GetName())
+
+    @property
+    def properties(self) -> dict:
+        return self.__dvr_obj.GetSetting()
 
     @property
     def framerate(self) -> float:
@@ -539,6 +538,7 @@ class Merger:
         for src_id, src_v in occs.items():
             clip_set = set([u["usage"] for u in src_v["usages"].values()])
             clip_map[src_id] = sorted(clip_set, key=lambda k: k[0])
+            log.debug(f"{occs[src_id]['source'].properties = }")
         log.info(f"{occs = }")
         log.info(f"{clip_map = }")
 
@@ -622,7 +622,7 @@ class UI:
                             [
                                 self.ui_manager.Label(
                                     {
-                                        "Text": "Timeline Filter:",
+                                        "Text": "Include Timelines matching regex:",
                                         "Alignment": {"AlignLeft": True},
                                         "Weight": 0.1,
                                     }
@@ -641,15 +641,15 @@ class UI:
                             [
                                 self.ui_manager.Label(
                                     {
-                                        "Text": "Pick Master Timeline:",
+                                        "Text": "Merged Timeline Name:",
                                         "Alignment": {"AlignLeft": True},
                                         "Weight": 0.1,
                                     }
                                 ),
-                                self.ui_manager.ComboBox(
+                                self.ui_manager.LineEdit(
                                     {
-                                        "ID": "timelines",
-                                        "Alignment": {"AlignLeft": True},
+                                        "ID": "merged_tl_name",
+                                        "Text": "merged",
                                         "Weight": 0.5,
                                     }
                                 ),
@@ -798,7 +798,7 @@ class UI:
     def init_ui_defaults(self):
         items = self.main_window.GetItems()
         items["clip_colors"].AddItems(clipcolor_names)
-        items["merge_key"].AddItems(merge_names)
+        items["merge_key"].AddItems(["Source File"])
 
     def init_ui_callbacks(self):
         self.main_window.On["ui.main"].Close = self.destroy
@@ -880,6 +880,7 @@ class UI:
             log.exception(err, stack_info=True)
 
     def update(self, event=None):
+        # TODO: well...
         if event:
             log.debug(event)
 
@@ -911,6 +912,7 @@ def get_logger() -> logging.Logger:
     log.addHandler(filehandler)
 
     log.setLevel(logging.DEBUG)
+    log.info(log_handler_paras["maxBytes"])
     return log
 
 
