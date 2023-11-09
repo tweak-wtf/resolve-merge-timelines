@@ -328,6 +328,8 @@ class DVR_Clip:
 
 
 class DVR_Timeline:
+    __track_filter: list[str]
+
     def __init__(self, dvr_obj) -> None:
         self.__dvr_obj = dvr_obj
 
@@ -350,6 +352,10 @@ class DVR_Timeline:
     def framerate(self) -> float:
         return float(self.__dvr_obj.GetSetting("timelineFrameRate"))
 
+    @classmethod
+    def set_track_filter(cls, para):
+        cls.__track_filter = para
+
     @property
     def is_drop_frame(self):
         result = self.__dvr_obj.GetSetting("timelineDropFrameTimecode")
@@ -370,8 +376,9 @@ class DVR_Timeline:
     def clips(self) -> list[DVR_Clip]:
         result = []
         log.debug(f"{self.video_tracks = }")
-        # TODO: exclude video_tracks as filter
         for i in range(len(self.video_tracks)):
+            if self.video_tracks[i] in self.__track_filter:
+                continue
             for c in self.__dvr_obj.GetItemListInTrack("video", i + 1):
                 clip = DVR_Clip(c)
                 clip.used_in_timeline = self
@@ -651,18 +658,21 @@ class UI:
                         self.ui_manager.HGroup(
                             {"Spacing": 5, "Weight": 0},
                             [
-                                self.ui_manager.Label(
+                                self.ui_manager.CheckBox(
                                     {
-                                        "Text": "Merged Timeline Name:",
-                                        "Alignment": {"AlignLeft": True},
-                                        "Weight": 0.1,
+                                        "ID": "shall_exclude_tracks",
+                                        "Text": "Exclude Track Names:",
+                                        "Checked": False,
+                                        "AutoExclusive": True,
+                                        "Checkable": True,
+                                        "Events": {"Toggled": True},
                                     }
                                 ),
                                 self.ui_manager.LineEdit(
                                     {
-                                        "ID": "merged_tl_name",
-                                        "Text": "merged",
-                                        "Weight": 0.5,
+                                        "ID": "exclude_tracks",
+                                        "Text": "reference,",
+                                        "Weight": 0.8,
                                     }
                                 ),
                             ],
@@ -810,6 +820,19 @@ class UI:
         return bool(self.main_window.Find("skip_clip_color").Checked)
 
     @property
+    def tracks_to_skip(self) -> list[str]:
+        res = str(self.main_window.Find("exclude_tracks").Text)
+        log.debug(f"{res = }")
+        if not "," in res:
+            return [res]
+        else:
+            return [i.strip() for i in res.split(",")]
+
+    @property
+    def shall_skip_tracks(self) -> bool:
+        return bool(self.main_window.Find("shall_exclude_tracks").Checked)
+
+    @property
     #! might require getter
     def timeline_out(self) -> str:
         return str(self.main_window.Find("merged_tl_name").Text)
@@ -835,13 +858,18 @@ class UI:
     def merge(self, event=None):
         if event:
             log.debug(event)
-
+        log.debug(f"{self.merge_gap = }")
         try:
             # prepare timeline merger
+            log.debug(self.tracks_to_skip)
+            DVR_Timeline.set_track_filter(self.tracks_to_skip)
             self.merger.timeline_out = self.timeline_out
             self.merger.timeline_filter = self.filter
             self.merger.color_to_skip = (
                 self.color_to_skip if self.shall_skip_color else ""
+            )
+            self.merger.tracks_to_skip = (
+                self.tracks_to_skip if self.shall_skip_tracks else []
             )
             self.merger.mode = self.merge_mode
             self.merger.gapsize = self.merge_gap
