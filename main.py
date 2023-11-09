@@ -483,32 +483,35 @@ class Merger:
             TC.set_fps(tl.framerate)
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
+            log.debug(f"{tl.properties}")
             for tl_clip in tl.clips:
-                src_clip = tl_clip.source
-                # never seen this MPI before... add it
-                if not src_clip.id in occs.keys():
-                    occs.update(
-                        {
-                            src_clip.id: {
-                                "source": src_clip,
-                                "usages": {
-                                    tl_clip.id: {
-                                        "clip": tl_clip,
-                                        "usage": (tl_clip.src_in, tl_clip.src_out),
-                                    }
-                                },
+                log.debug(f"{tl_clip.color} -- {self.color_to_skip}")
+                if not tl_clip.color == self.color_to_skip:
+                    src_clip = tl_clip.source
+                    # never seen this MPI before... add it
+                    if not src_clip.id in occs.keys():
+                        occs.update(
+                            {
+                                src_clip.id: {
+                                    "source": src_clip,
+                                    "usages": {
+                                        tl_clip.id: {
+                                            "clip": tl_clip,
+                                            "usage": (tl_clip.src_in, tl_clip.src_out),
+                                        }
+                                    },
+                                }
                             }
-                        }
-                    )
-                else:
-                    occs[src_clip.id]["usages"].update(
-                        {
-                            tl_clip.id: {
-                                "clip": tl_clip,
-                                "usage": (tl_clip.src_in, tl_clip.src_out),
+                        )
+                    else:
+                        occs[src_clip.id]["usages"].update(
+                            {
+                                tl_clip.id: {
+                                    "clip": tl_clip,
+                                    "usage": (tl_clip.src_in, tl_clip.src_out),
+                                }
                             }
-                        }
-                    )
+                        )
 
         return occs
 
@@ -803,8 +806,8 @@ class UI:
         return str(self.main_window.Find("clip_colors").CurrentText)
 
     @property
-    def timeline_in(self) -> str:
-        return str(self.main_window.Find("timelines").CurrentText)
+    def shall_skip_color(self) -> bool:
+        return bool(self.main_window.Find("skip_clip_color").Checked)
 
     @property
     #! might require getter
@@ -835,10 +838,11 @@ class UI:
 
         try:
             # prepare timeline merger
-            self.merger.timeline_in = self.timeline_in
             self.merger.timeline_out = self.timeline_out
             self.merger.timeline_filter = self.filter
-            self.merger.color_to_skip = self.color_to_skip
+            self.merger.color_to_skip = (
+                self.color_to_skip if self.shall_skip_color else ""
+            )
             self.merger.mode = self.merge_mode
             self.merger.gapsize = self.merge_gap
 
