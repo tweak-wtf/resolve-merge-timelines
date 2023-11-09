@@ -43,6 +43,7 @@ class TC:
         if not isinstance(para, (float, int)):
             raise RuntimeError(f"{para} must be of type bool. {type(para)} != float")
         cls.__fps = float(para)
+        log.info(f"Set internal FPS to {cls.__fps}")
 
     @classmethod
     def get_is_dropframe(cls) -> bool:
@@ -288,10 +289,12 @@ class DVR_Clip:
 
     @property
     def head_in(self) -> int:
+        TC.set_fps(float(self.source.properties.get("FPS")))
         return TC.get_frames(str(self.source.properties.get("Start TC")))
 
     @property
     def tail_out(self) -> int:
+        TC.set_fps(float(self.source.properties.get("FPS")))
         return TC.get_frames(str(self.source.properties.get("End TC")))
 
     @property
@@ -477,6 +480,7 @@ class Merger:
     def get_occurences(self, timelines):
         occs = {}  # occurrences per mediapoolitem
         for tl in timelines:
+            TC.set_fps(tl.framerate)
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
             for tl_clip in tl.clips:
@@ -510,7 +514,6 @@ class Merger:
 
     def merge(self):
         pmanager = DVR_ProjectManager()
-        TC.set_fps(25)
 
         # query all timelines that match the given filters
         # TODO: implement regex exclude
