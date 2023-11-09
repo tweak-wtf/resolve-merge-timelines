@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import logging
 from logging.handlers import RotatingFileHandler
@@ -383,7 +384,7 @@ class Merger:
         self.__timeline_in: str
         self.__timeline_out: str
         self.__color_to_skip: str
-        self.__timeline_filter: str
+        self.__timeline_filter: re.Pattern
 
     @property
     def timeline_in(self):
@@ -402,12 +403,14 @@ class Merger:
         self.__timeline_out = var
 
     @property
-    def timeline_filter(self):
+    def timeline_filter(self) -> re.Pattern:
         return self.__timeline_filter
 
     @timeline_filter.setter
-    def timeline_filter(self, var):
-        self.__timeline_filter = var
+    def timeline_filter(self, para):
+        res = re.compile(para)
+        log.debug(f"{res = }")
+        self.__timeline_filter = res
 
     @property
     def mode(self):
@@ -508,10 +511,11 @@ class Merger:
     def merge(self):
         pmanager = DVR_ProjectManager()
         TC.set_fps(25)
+
         # query all timelines that match the given filters
-        # TODO: implement regex include and exclude
+        # TODO: implement regex exclude
         all_timelines = [
-            tl for tl in pmanager.all_timelines if self.timeline_filter in tl.name
+            tl for tl in pmanager.all_timelines if self.timeline_filter.search(tl.name)
         ]
 
         log.info("================================================")
@@ -613,7 +617,7 @@ class UI:
                                 self.ui_manager.LineEdit(
                                     {
                                         "ID": "include_only",
-                                        "Text": "",
+                                        "Text": "^.+$",
                                         "Weight": 0.5,
                                     }
                                 ),
