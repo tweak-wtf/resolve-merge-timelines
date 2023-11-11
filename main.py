@@ -42,7 +42,7 @@ class TC:
         if not isinstance(para, (float, int)):
             raise RuntimeError(f"{para} must be of type bool. {type(para)} != float")
         cls.__fps = float(para)
-        log.info(f"Set internal FPS to {cls.__fps}")
+        log.debug(f"Set internal FPS to {cls.__fps}")
 
     @classmethod
     def get_is_dropframe(cls) -> bool:
@@ -205,10 +205,11 @@ class DVR_ProjectManager:
 
     @property
     def all_timelines(self):
-        # ! resolve saves Timelines with 1-based indices
+        # ! resolve saves Timelines(everything?) with 1-based indices
         result = []
         for i in range(1, self.current_project.GetTimelineCount() + 1):
             dvrtl = self.current_project.GetTimelineByIndex(i)
+            tl = DVR_Timeline(dvrtl)
             result.append(DVR_Timeline(dvrtl))
 
         return result
@@ -239,7 +240,8 @@ class DVR_SourceClip:
         return dict(sorted(result.items()))
 
     @property
-    def pls_work(self):
+    # TODO: break out the wrapper classes and inherit
+    def _super(self):
         return self.__dvr_obj
 
 
@@ -285,12 +287,18 @@ class DVR_Clip:
     @property
     def head_in(self) -> int:
         TC.set_fps(float(self.source.properties.get("FPS")))
-        return TC.get_frames(str(self.source.properties.get("Start TC")))
+        res = TC.get_frames(str(self.source.properties.get("Start TC")))
+        log.debug(f"HEAD IN {TC.get_tc(res) = }")
+        log.debug(f"HEAD IN {res = }")
+        return res
 
     @property
     def tail_out(self) -> int:
         TC.set_fps(float(self.source.properties.get("FPS")))
-        return TC.get_frames(str(self.source.properties.get("End TC")))
+        res = TC.get_frames(str(self.source.properties.get("End TC")))
+        log.debug(f"TAIL_OUT {TC.get_tc(res) = }")
+        log.debug(f"TAIL_OUT {res = }")
+        return res
 
     @property
     def left_offset(self) -> int:
@@ -298,21 +306,37 @@ class DVR_Clip:
 
     @property
     def right_offset(self) -> int:
+        # ! hey blackmagic... why u return bs
         return int(self.__dvr_obj.GetRightOffset())
 
     @property
     def src_in(self) -> int:
-        return self.head_in + self.left_offset
+        res = self.head_in + self.left_offset
+        log.debug(f"SRC_IN {res = }")
+        log.debug(f"SRC_IN {TC.get_tc(res) = }")
+        log.debug(f"LEFT OFFSET {self.left_offset = }")
+        return res
 
     @property
     def src_out(self) -> int:
         # ? why doesn't this here work: self.tail_out - self.right_offset
-        return self.src_in + self.duration
+        res = self.src_in + self.duration
+        log.debug(f"SRC_OUT {res = }")
+        log.debug(f"SRC_OUT {TC.get_tc(res) = }")
+        log.debug(f"RIGHT OFFSET {self.right_offset = }")
+        return res
 
     @property
-    def duration(self):
+    def duration(self) -> int:
         # TODO: support timeremaps
-        return self.__dvr_obj.GetDuration()
+        #! somehow gotta calc the duration based on source in/out that are timeremapped TO and not FROM
+        # res = int(self.__dvr_obj.GetDuration())
+        res = self.right_offset - self.left_offset
+        log.debug(f"")
+        log.debug(f"DURATION {res = }")
+        log.debug(f"{self.properties = }")
+        log.debug(f"{self.__dvr_obj.GetProperty('_Stabilization') = }")
+        return res
 
     @property
     def color(self):
@@ -331,6 +355,10 @@ class DVR_Timeline:
 
     def __str__(self) -> str:
         return self.name
+
+    @property
+    def root_object(self):
+        return self.__dvr_obj
 
     @property
     def start_frame(self) -> int:
@@ -453,7 +481,6 @@ class Merger:
 
         best_ranges = []
         current_range = sets[0].copy()
-
         for s in sets[1:]:
             # compare current in with last out, aka. soft gap between 2 ranges
             if min(s) - max(current_range) <= self.gapsize:
@@ -490,6 +517,7 @@ class Merger:
             TC.set_fps(tl.framerate)
             log.debug("------------------------------------------------")
             log.debug(f"analyzing timeline: {tl.name}")
+            log.debug(f"{tl.root_object.GetCurrentVideoItem()}")
             log.debug(f"{tl.properties}")
             for tl_clip in tl.clips:
                 log.debug(f"{tl_clip.properties = }")
@@ -547,7 +575,7 @@ class Merger:
         # framelists = {k: set(range(v[0], v[1] + 1)) for k, v in clip_map.items()}
         framelists = {}
         for k, v in clip_map.items():
-            framelists[k] = [set(range(i[0], i[1])) for i in v]
+            framelists[k] = [set(range(min(i), max(i))) for i in v]
             log.debug(type(framelists[k]))
             for i in framelists[k]:
                 log.debug(type(i))
@@ -561,11 +589,11 @@ class Merger:
                 log.debug(f"{len(f) = }")
             blis[k] = self.find_best_ranges(v)
             log.debug(f"{len(blis[k]) = }")
-        log.info(f"{blis = }")
+        log.info(f"best length clips = {blis}")
 
         result = []
         for k, v in blis.items():
-            tc_head_in = occs[k]["source"].pls_work.GetClipProperty("Start TC")
+            tc_head_in = occs[k]["source"]._super.GetClipProperty("Start TC")
             f_head_in = TC.get_frames(tc_head_in)
             for i in v:
                 log.debug(TC.get_tc(min(i)))
@@ -575,11 +603,10 @@ class Merger:
                 start = min(i)
                 log.debug(f"{start = }")
                 end = max(i)
-                # ! resolve frame in MediapoolItems
                 #   it's actually using relative frames. e.g. start of source 12:42:13:12 -> f0
                 result.append(
                     {
-                        "mediaPoolItem": occs[k]["source"].pls_work,
+                        "mediaPoolItem": occs[k]["source"]._super,
                         "startFrame": start - f_head_in,
                         "endFrame": end - f_head_in,
                         "mediaType": 1,
@@ -808,7 +835,6 @@ class UI:
         self.main_window.On["include_only"].TextChanged = self.update
 
     @property
-    # ? should we really call the filter include_only
     # ? should we combine timeline and color filter into 1 object
     def filter(self) -> str:
         return str(self.main_window.Find("include_only").Text)
@@ -828,14 +854,13 @@ class UI:
         if not "," in res:
             return [res]
         else:
-            return [i.strip() for i in res.split(",")]
+            return [i.strip() for i in res.split(",") if i != ""]
 
     @property
     def shall_skip_tracks(self) -> bool:
         return bool(self.main_window.Find("shall_exclude_tracks").Checked)
 
     @property
-    #! might require getter
     def timeline_out(self) -> str:
         return str(self.main_window.Find("merged_tl_name").Text)
 
@@ -913,11 +938,18 @@ def get_logger() -> logging.Logger:
     filehandler.setFormatter(formatter)
     log.addHandler(filehandler)
 
-    log.setLevel(logging.DEBUG)
-    log.info(log_handler_paras["maxBytes"])
+    log.setLevel(logging.INFO)
+    log.info(f"{_spacer}")
+    log.debug(log_handler_paras["maxBytes"])
+    log.debug(f"{dir(bmd.scriptapp('Resolve')) = }")
+    log.debug(f"{dir(bmd.scriptapp('Fusion')) = }")
+    log.debug(f"{dir(bmd.scriptobject) = }")
+    log.debug(f"{dir(bmd) = }")
     return log
 
 
+# so much bad i'm stopid let's goo ✨
+_spacer: str = "#" * 42
 log = get_logger()
 app = UI(bmd.scriptapp("Fusion"))
 app.start()
