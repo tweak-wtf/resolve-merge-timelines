@@ -10,6 +10,8 @@
 
 from operator import index
 import pprint
+import logging
+import sys
 
 fu = bmd.scriptapp('Fusion')
 ui = fu.UIManager
@@ -160,7 +162,7 @@ class ResolveProject:
         '16': 16.0,     '18': 18.0,
         '23': 23.976,   '24': 24.0,
         '24.0': 24.0,
-        '25': 25.0,     '29': 29.97,
+        '25.0': 25.0,     '29': 29.97,
         '30': 30.0,     '30.0': 30.0,
         '47': 47.952,
         '48': 48.0,     '50': 50.0,
@@ -214,10 +216,11 @@ class ResolveProject:
         for one_tl in self.all_timelines:
             if not one_tl['to_merge']:
                 continue
-            self.smpte.fps = self.fps_mapping[one_tl['fps']]
+            self.smpte.fps = int(self.fps_mapping[one_tl['fps']])
             self.smpte.df = one_tl['drop']
             for trck in range(1, one_tl['v_tracks'] + 1):
                 trck_name = one_tl['item'].GetTrackName('video', trck)
+                print(f"{trck_name = }")
                 trck_items = one_tl['item'].GetItemListInTrack('video', trck)
                 for itm in trck_items:
                     pool_item = itm.GetMediaPoolItem()
@@ -383,40 +386,45 @@ def _timelines_update(*ev):
 
 
 def _merge(ev):
+    print(ev)
+    try:
+        filter_color = bool(itm['skip_clip_color'].Checked)
+        filtered_color = itm['clip_colors'].CurrentText
+        if not filter_color:
+            filtered_color = None
 
-    filter_color = bool(itm['skip_clip_color'].Checked)
-    filtered_color = itm['clip_colors'].CurrentText
-    if not filter_color:
-        filtered_color = None
+        mrg_by = itm['merge_key'].CurrentText
+        if mrg_by == 'Reel Name':
+            mrg = 'pool_reel'
+        elif mrg_by == 'Source File':
+            mrg = 'pool_file_name'
 
-    mrg_by = itm['merge_key'].CurrentText
-    if mrg_by == 'Reel Name':
-        mrg = 'pool_reel'
-    elif mrg_by == 'Source File':
-        mrg = 'pool_file_name'
+        gap = int(itm['merge_gap'].Value)
 
-    gap = int(itm['merge_gap'].Value)
+        PRJ.get_plates(filtered_color)
+        PRJ.split_plates_by_reel(mrg)
+        PRJ.merge_plates(gap)
+        pprint.pprint(PRJ.plate_groups)
+        pprint.pprint(PRJ.merge_summary)
 
-    PRJ.get_plates(filtered_color)
-    PRJ.split_plates_by_reel(mrg)
-    PRJ.merge_plates(gap)
-    pprint.pprint(PRJ.plate_groups)
-    pprint.pprint(PRJ.merge_summary)
-
-    reels = 0
-    shots = 0
-    for k, v in PRJ.plate_groups.items():
-        reels +=1
-        for o in v:
-            shots +=1
-    plates = 0
-    for k, v in PRJ.merge_summary.items():
-        plates = plates + len(v)
-    _m = "{} sources, {} shots {} plates".format(reels, shots, plates)
-    print(_m)
-    dlg.Find('status').Text = _m
+        reels = 0
+        shots = 0
+        for k, v in PRJ.plate_groups.items():
+            reels +=1
+            for o in v:
+                shots +=1
+        plates = 0
+        for k, v in PRJ.merge_summary.items():
+            plates = plates + len(v)
+        _m = "{} sources, {} shots {} plates".format(reels, shots, plates)
+        print(_m)
+        dlg.Find('status').Text = _m
+    except Exception as err:
+        log.exception(err, stack_info=True)
+        print(err)
 
     # TODO actually make a new timeline and add plates to it
+
 
 
 def _exit(ev):
@@ -440,6 +448,24 @@ dlg.On['include_only'].TextChanged = _timelines_update
 _timelines_update()
 
 current_folder_name = str(PRJ.project_manager.GetCurrentFolder())
+
+
+log = logging.getLogger(__name__)
+formatter = logging.Formatter(
+    "%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s"
+)
+errhandler = logging.StreamHandler(sys.stderr)
+errhandler.setLevel(logging.ERROR)
+errhandler.setFormatter(formatter)
+log.addHandler(errhandler)
+
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.DEBUG)
+handler.setFormatter(formatter)
+log.addHandler(handler)
+
+
+log.setLevel(logging.DEBUG)
 
 
 dlg.Show()
